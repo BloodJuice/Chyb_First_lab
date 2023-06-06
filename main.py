@@ -4,27 +4,40 @@ import numpy as np
 from scipy.optimize import minimize, Bounds, LinearConstraint, NonlinearConstraint
 
 # return F, Psi, H, x_t0
-def initVariables(tetta):
-    F = np.array([[-0.8, 1.0], [tetta[0][0], 0]])
-    Psi = np.array([[tetta[1][0]], [1.0]])
-    H = np.array([[1, 0]])
-    xt0 = np.array([[0], [0]])
-    return F, Psi, H, xt0
+def initVariables(tetta, mode):
+    if mode == 2:
+        F = np.array([[-0.8, 1.0], [tetta[0][0], 0]])
+        Psi = np.array([[tetta[1][0]], [1.0]])
+        H = np.array([[1.0, 0]])
+        R = np.array([[0.1]])
+        x0 = np.zeros((n, 1))
+        u = np.zeros((N, 1))
+        for i in range(N):
+            u[i] = 1.0
+    if mode == 1:
+        F = np.array([[0]])
+        Psi = np.array([[tetta[0][0], tetta[1][0]]])
+        H = np.array([[1.0]])
+        R = np.array([[0.3]])
+        x0 = np.zeros((n, 1))
+        u = np.array([[[2.], [1.]], [[1.], [2.]]])
+    return F, Psi, H, R, x0, u
 
+# return dF, dPsi, dH, dR, dx0, du_dua
 def initGraduates(mode):
     if mode == 2:
-        dF = [np.array([[0, 0], [1, 0]]), np.array([[0, 0], [0, 0]])]
-        dPsi = [np.array([[0], [0]]), np.array([[1], [0]])]
-        dH = [np.array([[0, 0]]), np.array([[0, 0]])]
-        dR = [np.array([[0]]), np.array([[0]])]
-        dx0 = [np.zeros((n, 1)) for i in range(s)]
+        dF = np.array([np.array([[0, 0], [1, 0]]), np.array([[0, 0], [0, 0]])])
+        dPsi = np.array([np.array([[0], [0]]), np.array([[1], [0]])])
+        dH = np.array([np.array([[0, 0]]), np.array([[0, 0]])])
+        dR = np.array([np.array([[0]]), np.array([[0]])])
+        dx0 = np.array([np.zeros((n, 1)) for i in range(s)])
         du_dua = 1
     elif mode == 1:
-        dF = [np.array([[0]]), np.array([[0]])]
-        dPsi = [np.array([[1, 0]]), np.array([[0, 1]])]
-        dH = [np.array([[0]]), np.array([[0]])]
-        dR = [np.array([[0]]), np.array([[0]])]
-        dx0 = [np.zeros((n, 1)) for i in range(s)]
+        dF = np.array([np.array([[0]]), np.array([[0]])])
+        dPsi = np.array([np.array([[1, 0]]), np.array([[0, 1]])])
+        dH = np.array([np.array([[0]]), np.array([[0]])])
+        dR = np.array([np.array([[0]]), np.array([[0]])])
+        dx0 = np.array(np.zeros((n, 1)) for i in range(s))
         du_dua = np.array([[[1], [0]], [[0], [1]]])
     return dF, dPsi, dH, dR, dx0, du_dua
 
@@ -131,7 +144,8 @@ def graf3D():
     plt.show()
 
 def y(R, tetta, N, plan):
-    F, Psi, H, x_t0 = initVariables(tetta)
+    mode = n
+    F, Psi, H, o, xt0, l = initVariables(tetta, mode)
     xtk = 0
     yEnd = []
     q = len(plan[0])
@@ -156,9 +170,11 @@ def Xi(tetta, params):
     v = params['v']
     m = params['m']
     R = params['R']
-    
+
     tetta = np.array(tetta).reshape(2, 1)
-    F, Psi, H, xt0 = initVariables(tetta)
+
+    mode = n
+    F, Psi, H, o, xt0, l = initVariables(tetta, mode)
     q = len(k)
     xtk = np.array([[np.full(shape=2, fill_value=0, dtype=float).reshape(2, 1) for stepj in range(N)] for stepi in range(q)])
     xi = N * m * v * math.log(2 * math.pi) + N * v * math.log(R)  # Calculate Xi constant
@@ -186,56 +202,70 @@ def Xi(tetta, params):
             xtk[i][kCount] = xPlusOne
     return 0.5 * xi
 
-def dXi(x, params):
+def dXi(tetta, params):
     ###############___0.5____###################################
     mode = 2
-    s = len(tetta_true)
     y = params['y'].copy()
     plan = params['plan'].copy()
     k = params['k'].copy()
     v = params['v']
     m = params['m']
     R = params['R']
-    N = params['N']
 
+    
     # 1
-    F = np.array([(-0.8, 1), (x[0], 0)])
-    PSI = np.array([x[1], 1])
-    H = np.array([1, 0])
+    mode = n
+    F, Psi, H, o, xt0, l = initVariables(tetta, mode=mode)
+    dF, dPsi, dH, dR, dxt0, du_dua = initGraduates(mode=mode)
 
-    dF = [np.array([(0, 0), (1, 0)]), np.array([(0, 0), (0, 0)])]
-    dPSI = [[0, 0], [1, 0]]
-    dH = [np.array([0, 0]), np.array([0, 0])]
-    dR = (0, 0)
+    # 2
+    gradient = np.array([v / 2 * N * 1 / R * dR[alfa] for alfa in range(s)])
 
-    gradient = [nu / 2 * N * 1 / R * 0 for alfa in range(s)]
+    q = len(k)
+    # Point 4
+    u = plan
+    # Point 5
+    xtk = np.array([[np.full(shape=2, fill_value=0, dtype=float).reshape(2, 1) for stepj in range(N)] for stepi in range(q)])
+    dxtk = np.array([[[np.full(shape=2, fill_value=0, dtype=float).reshape(2, 1) for stepj in range(N)] for stepi in range(q)] for alpha in range(s)])
+    dxPlusOne = np.array([0 for alpha in range(s)])
+    depsPlusOne = np.array([0 for alpha in range(s)])
 
-    q_signals = 1
-    u = [1 for _ in range(q_signals)]  # вектор управления (входа)
-    signals_quantity = [1 for _ in range(q_signals)]  # сколько раз подали каждый входной сигнал (k_i)
-    x = [np.array([0, 0]) for _ in range(len(u))]
-    dx = x.copy()  # копируем, потому что дифференциал от нулей
-    # цикл по N (момента времени?)
-    l = k
-    for l in range(N):
-        delta = [0, 0]
-        # цикл по сигналам
-        for i in range(0, q_signals):
 
-            x[i] = F.dot(x[i]) + PSI * u[i]
-            # eps = y_true[l] - H.dot(x[i])
-            # print(f"x[i] = {x[i]}, y = {y}")
-            for alfa in range(s):
-                dx[i] = dF[alfa].dot(x[i]) + F.dot(dx[i]) + dPSI[alfa] * u[i]
-                deps = -dH[alfa].dot(x[i]) - H.dot(dx[i])
-                # print(f"-{dH[alfa]}*{x[i]} - {H}*{dx[i]}")
-                for j in range(signals_quantity[i]):
-                    eps = y_true[l] - H.dot(x[i])
-                    # eps = y - H.dot(x[i]) # по алгоритму вычисления эпсилон как будто должно быть здесь, но как по мне это неправильно
-                    delta[alfa] += deps.transpose() / R * eps - eps.transpose() / (2 * R) * dR[alfa] / R * eps
+    for kCount in range(0, N):
+        Triangle = np.array([0 for alpa in range(s)])  # Инициализация треугольничка
+        for i in range(0, q):
 
-                gradient[alfa] += delta[alfa]
-    return(gradient)
+            # Point 5
+            if kCount == 0:
+                xtk[i][kCount] = xt0
+                for alpha in range(s):
+                    dxtk[alpha][i][kCount] = dxt0[alpha]
+
+            # Point 6
+            xPlusOne = np.dot(F, xtk[i][kCount]) + np.dot(Psi, u[i][kCount][0])
+
+            # Point 7
+            for alpha in range(s):
+                dxtk[alpha][i][kCount] = np.dot(dF[alpha], xtk[i][kCount]) + np.dot(F, dxtk[alpha][i][kCount]) + np.dot(dPsi[alpha], u[i][kCount][0])
+                depsPlusOne[alpha] = (-1) * np.dot(dH[alpha], xtk[alpha][kCount]) - np.dot(H, dxtk[alpha][i][kCount])
+
+            for j in range(int(k[i])):
+                epsPlusOne = y[i][kCount][0] - np.dot(H, xPlusOne)
+                for alpha in range(s):
+                    Triangle[alpha] += np.dot(np.dot(depsPlusOne[alpha].transpose(), pow(R, -1)), epsPlusOne) - \
+                                       (0.5) * np.dot(np.dot(depsPlusOne[alpha].transpose(), pow(R, -1)), dR[alpha]) * \
+                                       np.dot(pow(R, -1), epsPlusOne)
+        for alpha in range(s):
+            gradient[alpha] += Triangle[alpha]
+        if kCount + 1 < N:
+            xtk[i][kCount + 1] = xPlusOne
+            for alpha in range(s):
+                dxtk[alpha][i][kCount + 1] = dxtk[alpha][i][kCount]
+        else:
+            xtk[i][kCount] = xPlusOne
+            for alpha in range(s):
+                dxtk[alpha][i][kCount] = dxtk[alpha][i][kCount]
+    return gradient
 
 def KsiStart(q):
     ksi = []
@@ -246,7 +276,7 @@ def KsiStart(q):
     return np.array(ksi)
 
 def main(tettaTrue, tettaFalse):
-    s, R, m = 2, 0.1, 1. # Nubmber of derivatives
+    R, m = 0.1, 1. # Nubmber of derivatives
     q = int(1 + s * (s + 1) / 2) # Number of k
     k = [1.0 for stepi in range(q)]  # Initial number of system start
     v = q
@@ -256,7 +286,10 @@ def main(tettaTrue, tettaFalse):
     startPlan = KsiStart(q)
     v_noise = (np.array(np.random.normal(0, 1., N) * R)).reshape(N, 1)
     yRun = y(R, tettaTrue, N, startPlan)
-    Minimize(tettaFalse, yRun, startPlan, k, v, m, R)
+
+    print("tettaFalse:", dXi(tettaFalse, {"y": yRun,"plan": startPlan, "k": k, "v": v, "m": m, "R": R}))
+    print("tettaTrue:", dXi(tettaTrue, {"y": yRun, "plan": startPlan, "k": k, "v": v, "m": m, "R": R}))
+    # Minimize(tettaFalse, yRun, startPlan, k, v, m, R)
 
     # print("\ntettaFalse:\n", Xi(tettaFalse, yRun, startPlan, k, v, N, m, R))
     # print("\ntettaTrue:\n", Xi(tettaTrue, yRun, startPlan, k, v, N, m, R))
