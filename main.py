@@ -95,17 +95,17 @@ def ThirdPoint():
     print("Delta_Y =", tetta_sum1 / tetta_sum2)
 
 
-def Minimize(tettaMin, yRun, plan, k, v, m, R):
+def MinimizeFirst(tettaMin, yRun, plan, k, v, m, R):
     res = []
     ############__2__##########
     lim = [-2.0, 0.01, -0.05, 1.5]
     bounds = Bounds([lim[0], lim[1]],  # [min x0, min x1]
                     [lim[2], lim[3]])  # [max x0, max x1]
-    result = minimize(fun=Xi, x0=tettaMin, args={"y": yRun,"plan": plan, "k": k, "v": v, "m": m, "R": R}, method='SLSQP', bounds=bounds)
+    result = minimize(fun=Xi, x0=tettaMin, args={"y": yRun,"plan": plan, "k": k, "v": v, "m": m, "R": R}, jac=dXi,  method='SLSQP', bounds=bounds)
     # res.append(minimize(Xi, x_start, method='SLSQP', jac=dXi, bounds=bounds))
     # print("Тетты для нулевого порядка:", result.__getitem__("x"))
     print("Тетты для первого порядка:", result)
-    return result.__getitem__("x")
+    return np.array(result.__getitem__("x")). reshape(2, 1)
 
 def graf3D():
     # Выводим трёхмерное полотно
@@ -149,7 +149,6 @@ def y(R, tetta, N, plan):
     xtk = 0
     yEnd = []
     q = len(plan[0])
-    print("\nplan size\n", np.shape(plan))
     for _ in range(q):
         yPlus = []
         for stepj in range(N):
@@ -212,14 +211,14 @@ def dXi(tetta, params):
     m = params['m']
     R = params['R']
 
-    
+    tetta = np.array(tetta).reshape(2, 1) # Разкомментируй, если функцию минимизации используешь
     # 1
     mode = n
     F, Psi, H, o, xt0, l = initVariables(tetta, mode=mode)
     dF, dPsi, dH, dR, dxt0, du_dua = initGraduates(mode=mode)
 
     # 2
-    gradient = np.array([v / 2 * N * 1 / R * dR[alfa] for alfa in range(s)])
+    gradient = (np.array([v / 2. * N * 1. / R * dR[alfa] for alfa in range(s)])).reshape(s, 1)
 
     q = len(k)
     # Point 4
@@ -230,7 +229,6 @@ def dXi(tetta, params):
     dxPlusOne = np.array([0 for alpha in range(s)])
     depsPlusOne = np.array([0 for alpha in range(s)])
 
-
     for kCount in range(0, N):
         Triangle = np.array([0 for alpa in range(s)])  # Инициализация треугольничка
         for i in range(0, q):
@@ -240,7 +238,6 @@ def dXi(tetta, params):
                 xtk[i][kCount] = xt0
                 for alpha in range(s):
                     dxtk[alpha][i][kCount] = dxt0[alpha]
-
             # Point 6
             xPlusOne = np.dot(F, xtk[i][kCount]) + np.dot(Psi, u[i][kCount][0])
 
@@ -257,6 +254,7 @@ def dXi(tetta, params):
                                        np.dot(pow(R, -1), epsPlusOne)
         for alpha in range(s):
             gradient[alpha] += Triangle[alpha]
+
         if kCount + 1 < N:
             xtk[i][kCount + 1] = xPlusOne
             for alpha in range(s):
@@ -281,16 +279,12 @@ def main(tettaTrue, tettaFalse):
     k = [1.0 for stepi in range(q)]  # Initial number of system start
     v = q
 
-
-
     startPlan = KsiStart(q)
     v_noise = (np.array(np.random.normal(0, 1., N) * R)).reshape(N, 1)
     yRun = y(R, tettaTrue, N, startPlan)
 
-    print("tettaFalse:", dXi(tettaFalse, {"y": yRun,"plan": startPlan, "k": k, "v": v, "m": m, "R": R}))
-    print("tettaTrue:", dXi(tettaTrue, {"y": yRun, "plan": startPlan, "k": k, "v": v, "m": m, "R": R}))
-    # Minimize(tettaFalse, yRun, startPlan, k, v, m, R)
-
+    tettaNew = MinimizeFirst(tettaFalse, yRun, startPlan, k, v, m, R)
+    print("\ntettaNew:\n", tettaNew)
     # print("\ntettaFalse:\n", Xi(tettaFalse, yRun, startPlan, k, v, N, m, R))
     # print("\ntettaTrue:\n", Xi(tettaTrue, yRun, startPlan, k, v, N, m, R))
 
@@ -302,7 +296,7 @@ if __name__ == '__main__':
     N = 4  # Число испытаний
 
     tetta_true = (np.array([-1.5, 1.0])).reshape(2, 1)
-    tetta_false = (np.array([-2.0, 0.1])).reshape(2, 1)
+    tetta_false = (np.array([-2, 0.1])).reshape(2, 1)
 
     main(tetta_true, tetta_false)
 
