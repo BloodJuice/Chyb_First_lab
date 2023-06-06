@@ -1,10 +1,32 @@
 import math
-
+import matplotlib.pyplot as plt
 import numpy as np
 from scipy.optimize import minimize, Bounds, LinearConstraint, NonlinearConstraint
-import matplotlib.pyplot as plt
 
+# return F, Psi, H, x_t0
+def initVariables(tetta):
+    F = np.array([[-0.8, 1.0], [tetta[0][0], 0]])
+    Psi = np.array([[tetta[1][0]], [1.0]])
+    H = np.array([[1, 0]])
+    xt0 = np.array([[0], [0]])
+    return F, Psi, H, xt0
 
+def initGraduates(mode):
+    if mode == 2:
+        dF = [np.array([[0, 0], [1, 0]]), np.array([[0, 0], [0, 0]])]
+        dPsi = [np.array([[0], [0]]), np.array([[1], [0]])]
+        dH = [np.array([[0, 0]]), np.array([[0, 0]])]
+        dR = [np.array([[0]]), np.array([[0]])]
+        dx0 = [np.zeros((n, 1)) for i in range(s)]
+        du_dua = 1
+    elif mode == 1:
+        dF = [np.array([[0]]), np.array([[0]])]
+        dPsi = [np.array([[1, 0]]), np.array([[0, 1]])]
+        dH = [np.array([[0]]), np.array([[0]])]
+        dR = [np.array([[0]]), np.array([[0]])]
+        dx0 = [np.zeros((n, 1)) for i in range(s)]
+        du_dua = np.array([[[1], [0]], [[0], [1]]])
+    return dF, dPsi, dH, dR, dx0, du_dua
 
 def ThirdPoint():
 
@@ -60,17 +82,16 @@ def ThirdPoint():
     print("Delta_Y =", tetta_sum1 / tetta_sum2)
 
 
-def Minimize():
+def Minimize(tettaMin, yRun, plan, k, v, m, R):
     res = []
     ############__2__##########
     lim = [-2.0, 0.01, -0.05, 1.5]
     bounds = Bounds([lim[0], lim[1]],  # [min x0, min x1]
                     [lim[2], lim[3]])  # [max x0, max x1]
-    x_start = tetta_else
-    result = minimize(Xi, x_start, method='cobyla')
-    res.append(minimize(Xi, x_start, method='SLSQP', jac=dXi, bounds=bounds))
+    result = minimize(fun=Xi, x0=tettaMin, args={"y": yRun,"plan": plan, "k": k, "v": v, "m": m, "R": R}, method='SLSQP', bounds=bounds)
+    # res.append(minimize(Xi, x_start, method='SLSQP', jac=dXi, bounds=bounds))
     # print("Тетты для нулевого порядка:", result.__getitem__("x"))
-    # print("Тетты для первого порядка:", res)
+    print("Тетты для первого порядка:", result)
     return result.__getitem__("x")
 
 def graf3D():
@@ -109,63 +130,73 @@ def graf3D():
     ax.set_zlabel('Xi')
     plt.show()
 
-def y(tetta):
-    F = np.array([[-0.8, 1.0], [tetta[0], 0]])
-    Psi = np.array([tetta[1], 1.0])
-    H = np.array([1.0, 0])
-    x_t0 = np.array([0, 0])
-    x_tk = []
-    y_tk_plus_one = []
-    l = k
-    while l < N:
-        if l == 0:
-            x_tk = x_t0
+def y(R, tetta, N, plan):
+    F, Psi, H, x_t0 = initVariables(tetta)
+    xtk = 0
+    yEnd = []
+    q = len(plan[0])
+    print("\nplan size\n", np.shape(plan))
+    for _ in range(q):
+        yPlus = []
+        for stepj in range(N):
+            if stepj == 0:
+                xtk = np.array([[0], [0]])
+            xPlus = np.add(np.dot(F, xtk), np.dot(Psi, plan[_][stepj][0]))
+            yPlus.append(np.add(np.dot(H, xPlus)[0][0], (np.random.normal(0, 1.) * R)))
+            xtk = xPlus
+        yEnd.append(np.array(yPlus).reshape(N, 1))
+    yEnd = np.array(yEnd)
+    return yEnd
 
-        x_tk_plus_one = np.matmul(F, x_tk) + np.dot(Psi, u_t0)
-        y_tk_plus_one.append(np.matmul(H, x_tk_plus_one) + v_noise[k])
-        x_tk = x_tk_plus_one
-        l += 1
+def Xi(tetta, params):
+    # Инициализация матриц/векторов, 1, 2 пункты:
+    y = params['y'].copy()
+    plan = params['plan'].copy()
+    k = params['k'].copy()
+    v = params['v']
+    m = params['m']
+    R = params['R']
+    
+    tetta = np.array(tetta).reshape(2, 1)
+    F, Psi, H, xt0 = initVariables(tetta)
+    q = len(k)
+    xtk = np.array([[np.full(shape=2, fill_value=0, dtype=float).reshape(2, 1) for stepj in range(N)] for stepi in range(q)])
+    xi = N * m * v * math.log(2 * math.pi) + N * v * math.log(R)  # Calculate Xi constant
+    # Point 4
+    u = plan
 
-    return y_tk_plus_one
+    for kCount in range(0, N):
+        Triangle = 0  # Инициализация треугольничка
+        for i in range(0, q):
 
-def Xi(x):
+            # Point 5
+            if kCount == 0:
+                xtk[i][kCount] = xt0
 
-    # Инициализация матриц/векторов:
-    x_t0 = np.array([0 , 0])
-    F = np.array([[-0.8, 1.0], [x[0], 0]])
-    Psi = np.array([x[1], 1.0])
-    H = np.array([1, 0])
-    x_tk = []
+            # Расчёт критерия индентификации для ложных тет
+            xPlusOne = np.dot(F, xtk[i][kCount]) + np.dot(Psi, u[i][kCount][0])
 
-    # Calculate Xi constant
-    xi = N * m * v * math.log(2 * math.pi) + N * v * math.log(R)
-    #print("Xi", Xi)
-    l = k
-    # Поиск критерия идентификации
-    for l in range(N):
-        if l == 0:
-            x_tk = x_t0
-
-        # Инициализация треугольничка
-        Triangle = 0
-
-        # Расчёт критерия индентификации для ложных тет
-        x_tk_plus_one = np.matmul(F, x_tk) + np.dot(Psi, u_t0)
-        Eps_tk_plus_one = y_true[l] - np.matmul(H, x_tk_plus_one)
-        Triangle = Triangle + np.multiply(Eps_tk_plus_one.transpose(), Eps_tk_plus_one) * pow(R, -1)
+            for j in range(int(k[i])):
+                epsPlusOne = y[i][kCount][0] - np.dot(H, xPlusOne)
+                Triangle += np.multiply(epsPlusOne.transpose(), epsPlusOne) * pow(R, -1)
         xi += Triangle
+        if kCount + 1 < N:
+            xtk[i][kCount + 1] = xPlusOne
+        else:
+            xtk[i][kCount] = xPlusOne
+    return 0.5 * xi
 
-
-        x_tk = x_tk_plus_one
-    return xi
-
-def dXi(x):
+def dXi(x, params):
     ###############___0.5____###################################
-    # Zero point five
-
-
-    #start_tets = [-2, 0.01]
+    mode = 2
     s = len(tetta_true)
+    y = params['y'].copy()
+    plan = params['plan'].copy()
+    k = params['k'].copy()
+    v = params['v']
+    m = params['m']
+    R = params['R']
+    N = params['N']
 
     # 1
     F = np.array([(-0.8, 1), (x[0], 0)])
@@ -206,35 +237,43 @@ def dXi(x):
                 gradient[alfa] += delta[alfa]
     return(gradient)
 
+def KsiStart(q):
+    ksi = []
+    for stepi in range(q):
+        Ui = []
+        Ui = (np.full(shape=N, fill_value=1, dtype=float)).reshape(N, 1)
+        ksi.append(Ui)
+    return np.array(ksi)
+
+def main(tettaTrue, tettaFalse):
+    s, R, m = 2, 0.1, 1. # Nubmber of derivatives
+    q = int(1 + s * (s + 1) / 2) # Number of k
+    k = [1.0 for stepi in range(q)]  # Initial number of system start
+    v = q
+
+
+
+    startPlan = KsiStart(q)
+    v_noise = (np.array(np.random.normal(0, 1., N) * R)).reshape(N, 1)
+    yRun = y(R, tettaTrue, N, startPlan)
+    Minimize(tettaFalse, yRun, startPlan, k, v, m, R)
+
+    # print("\ntettaFalse:\n", Xi(tettaFalse, yRun, startPlan, k, v, N, m, R))
+    # print("\ntettaTrue:\n", Xi(tettaTrue, yRun, startPlan, k, v, N, m, R))
+
 if __name__ == '__main__':
-
     # Определение переменных
-    k = 0
-    m = q = i = j = v = nu = 1
-    u_t0 = 1.0
-    R = 0.1
-    N = 20
-    tetta_true = np.array([-1.5, 1.0])
-    tetta_true = tetta_true.reshape(2, 1)
+    r = 2  # Количество начальных сигналов, альфа
+    n = 2  # Размерность вектора х0
+    s = 2  # Количество производных по тетта
+    N = 4  # Число испытаний
 
-    tetta_else = np.array([-2.0, 0.1])
-    tetta_else = tetta_else.reshape(2, 1)
+    tetta_true = (np.array([-1.5, 1.0])).reshape(2, 1)
+    tetta_false = (np.array([-2.0, 0.1])).reshape(2, 1)
+
+    main(tetta_true, tetta_false)
 
 
-    #Генерируем общий шум
-    v_noise = np.dot(np.random.normal(0, 1.0, N), R)
-
-    # Создаём вместилище для тетт
-    tetta_all = np.zeros((5, 2))
-
-    # Фиксируем правильный игрек для верных значений y
-    y_true = y(tetta_true)
-
-    # Отрисовка 3D графика
-    # graf3D()
-
-    # Третий пункт первой лабы
-    ThirdPoint()
 
 
 
